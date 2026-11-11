@@ -109,28 +109,39 @@ diff, Codex version, installed MindIE plugin/runtime and knowledge-component
 versions, and corpus Git commit separately. A unit's integer revision is neither
 the corpus commit nor a plugin version. Preserve unknown values as unknown.
 
-Follow the **installed** MindIE skill to resolve `MINDIE_PYTHON` and
-`MINDIE_SCRIPTS`; do not select an arbitrary cached release. In the current
-Codex native shell:
+From the target Git checkout, authorize the already synced domain once:
 
 ```sh
-"$MINDIE_PYTHON" -I "$MINDIE_SCRIPTS/bridge.py" activate
-"$MINDIE_PYTHON" -I "$MINDIE_SCRIPTS/knowledge_cli.py" describe
+inferrsi mindie enable --domain operators
+inferrsi mindie describe
 ```
 
-Verify both commands succeeded and query/explain schemas are present. MindIE's
-session grant may require the user to send `/mindie-agent` in this chat; explain
-that requirement if activation fails. For v0.1.21, the message must begin directly
-with the command; surrounding Markdown backticks do not match its manual entry.
-Plugin installation and enabled status do not establish native hook trust.
-Check actual hook loading and trust before requesting another entry message.
-The user reviews the necessary `UserPromptSubmit` definition in the desktop
-composer's **Review hooks** or **Settings > Hooks**, or CLI `/hooks`, following
-the [native hook trust rules](https://learn.chatgpt.com/docs/hooks).
-Keep the review within the user's authorized capabilities. Never fabricate `CODEX_THREAD_ID`, edit
-the grant database or treat installation as activation. Continue independent
-local work while blocked. Query/read/local retention authority does not enable
-transcript capture, contribution, distillation, feedback or fault reporting.
+The project reader uses the installed `mindie-knowledge 0.13.13` graded
+retrieval engine with a read-only connection to the synced local catalog.
+`--adapter-config` selects the installed adapter when it lives outside the
+default MindIE config location. The grant and read receipts live in the user's
+local InferRSI configuration directory. New sessions in this checkout discover
+the grant through the InferRSI Skill. Use `inferrsi mindie disable` there to
+revoke it. Opening another checkout requires that project's own grant.
+
+To expose the two reads as native MCP tools, add the following entry to the
+trusted project's Codex configuration once. Set the command to the installed
+InferRSI executable and the cwd to the checkout that has the grant. For a built
+plugin, use the compatible Python command and prepend the absolute bundled
+launcher path to `args`.
+
+```toml
+[mcp_servers.inferrsi_mindie]
+command = "<absolute-inferrsi-executable>"
+args = ["mindie", "serve"]
+cwd = "<absolute-project-checkout>"
+enabled_tools = ["knowledge_query", "knowledge_explain"]
+```
+
+The Skill checks whether a specific implementation decision needs research
+before writing a candidate. Use the available MCP tools or the bundled CLI.
+Record the decision and continue with the available evidence when a read is
+unavailable or the search has no applicable hit.
 
 Create `query-input.json` using observed facts. For the currently proposed
 RMSNorm task package, the timed inputs are contiguous float32 `[1,4096]` and
@@ -147,9 +158,7 @@ example; add SoC/CANN conditions only after probing them:
 ```
 
 ```sh
-"$MINDIE_PYTHON" -I "$MINDIE_SCRIPTS/knowledge_cli.py" knowledge_query \
-  < "$WORK/query-input.json" > "$WORK/query-result.json"
-QUERY_EXIT=$?
+inferrsi mindie query --input "$WORK/query-input.json"
 ```
 
 Inspect exit status, `isError` and the business payload. Copy exact versioned
@@ -159,9 +168,7 @@ exact-version bodies still visible in this agent's context; after compaction,
 read them again. Then:
 
 ```sh
-"$MINDIE_PYTHON" -I "$MINDIE_SCRIPTS/knowledge_cli.py" knowledge_explain \
-  < "$WORK/explain-input.json" > "$WORK/explain-result.json"
-EXPLAIN_EXIT=$?
+inferrsi mindie explain --input "$WORK/explain-input.json"
 ```
 
 Inspect this response too, and actually read the delivered bodies. Search cards
@@ -169,15 +176,17 @@ and excerpts are navigation; errors and `unresolved` are not delivered knowledge
 For example, five search hits and one expanded unit remain five hits and one
 expanded unit, plus any prerequisites actually returned in `requires`.
 
-Use an existing matching campaign or initialize a new one, then import the four
-files and observed process statuses:
+Set `QUERY_READ` and `EXPLAIN_READ` to the respective returned
+`receipt_directory` values. Confirm both exits in their `receipt.json` files.
+Use an existing matching campaign or initialize a new one, then import the
+retained bytes:
 
 ```sh
 inferrsi campaign init --directory "$CAMPAIGN_DIR" --id "$CAMPAIGN_ID"
 inferrsi campaign import-mindie --directory "$CAMPAIGN_DIR" --id read-r1 \
-  --query-input "$WORK/query-input.json" --query-result "$WORK/query-result.json" \
-  --explain-input "$WORK/explain-input.json" --explain-result "$WORK/explain-result.json" \
-  --query-exit-code "$QUERY_EXIT" --explain-exit-code "$EXPLAIN_EXIT"
+  --query-input "$QUERY_READ/input.json" --query-result "$QUERY_READ/result.json" \
+  --explain-input "$EXPLAIN_READ/input.json" --explain-result "$EXPLAIN_READ/result.json" \
+  --query-exit-code 0 --explain-exit-code 0
 ```
 
 The new `mindie/read-r1/` directory contains exact original files, a hash receipt,

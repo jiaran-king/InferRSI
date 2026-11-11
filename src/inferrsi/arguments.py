@@ -39,6 +39,20 @@ def parser() -> argparse.ArgumentParser:
     )
     root.add_argument("--version", action="version", version=__version__)
     commands = root.add_subparsers(dest="command", required=True)
+    mindie = commands.add_parser("mindie", help="Use project-approved, local MindIE knowledge")
+    mindie_actions = mindie.add_subparsers(dest="mindie_action", required=True)
+    enable = mindie_actions.add_parser("enable", help="Approve a MindIE domain for this checkout")
+    enable.add_argument("--domain", default="operators")
+    enable.add_argument(
+        "--adapter-config", type=Path, default=Path.home() / ".config/mindie-agent/codex.json",
+        help="Installed MindIE Codex adapter configuration",
+    )
+    mindie_actions.add_parser("disable", help="Revoke the project grant")
+    mindie_actions.add_parser("describe", help="Discover read tools for the current project")
+    mindie_actions.add_parser("serve", help="Expose the approved read tools over stdio MCP")
+    for action in ("query", "explain"):
+        read = mindie_actions.add_parser(action, help=f"Run a MindIE {action} and keep a receipt")
+        read.add_argument("--input", type=Path, required=True, help="JSON tool arguments")
     doctor = commands.add_parser(
         "doctor", help="Inspect a prepared local target without installing dependencies"
     )

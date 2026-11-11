@@ -116,6 +116,13 @@ def main(argv: list[str] | None = None) -> int:
     argument_parser = parser()
     args = argument_parser.parse_args(argv)
     try:
+        if args.command == "mindie":
+            from .mindie_project import dispatch
+
+            result = dispatch(args)
+            if result is not None:
+                _print(result)
+            return 0
         if args.command == "skills":
             # Optional dependencies load only for the skills command; the core
             # CLI stays independent of them.
