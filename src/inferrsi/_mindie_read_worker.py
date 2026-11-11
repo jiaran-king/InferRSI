@@ -11,6 +11,7 @@ from contextlib import closing
 from importlib.metadata import version
 from pathlib import Path
 from threading import RLock
+from time import perf_counter
 from types import SimpleNamespace
 
 
@@ -18,12 +19,22 @@ def read(engine_path, domain, action, arguments):
     component = version("mindie-knowledge")
     if component != "0.13.13":
         raise ValueError("The project reader supports mindie-knowledge 0.13.13")
+    from mindie_knowledge.graded.index import RoutingIndex
     from mindie_knowledge.graded.repository import GradedRepository
     from mindie_knowledge.state_layout import state_root
 
     class ReadOnlyRepository(GradedRepository):
         def observe_delivered(self, index, payload, *, delivery, run_id=None):
             """Leave MindIE's delivery counters and feedback state untouched."""
+
+        def _rebuild_index(self, catalog, started):
+            # The caller's read transaction already holds one consistent
+            # generation. A missing derived index can be rebuilt in memory.
+            index = RoutingIndex(self._read(item) for item in catalog["units"])
+            if index.generation != catalog["generation"]:
+                raise ValueError("MindIE catalog generation mismatch")
+            index.build_elapsed_ms = (perf_counter() - started) * 1000
+            return index
 
     engine = json.loads(Path(engine_path).read_text(encoding="utf-8"))
     if engine.get("domain") != domain:
@@ -38,6 +49,7 @@ def read(engine_path, domain, action, arguments):
         if action == "describe":
             if not repository.available():
                 raise ValueError("The approved MindIE domain has no synced graded catalog")
+            repository._load()
             return {"domain": domain, "component_version": component}
         if action == "query":
             return repository.query(**arguments, navigation_only=True)

@@ -122,7 +122,8 @@ retrieval engine with a read-only connection to the synced local catalog.
 default MindIE config location. The grant and read receipts live in the user's
 local InferRSI configuration directory. New sessions in this checkout discover
 the grant through the InferRSI Skill. Use `inferrsi mindie disable` there to
-revoke it. Opening another checkout requires that project's own grant.
+revoke it. Opening another checkout or replacing one at the same path requires
+a grant for the new checkout.
 
 To expose the two reads as native MCP tools, add the following entry to the
 trusted project's Codex configuration once. Set the command to the installed

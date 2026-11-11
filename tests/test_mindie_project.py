@@ -25,6 +25,10 @@ def test_project_enable_discover_read_and_revoke(tmp_path, monkeypatch, capsys):
         if operation == "describe":
             return b'{"domain":"operators","component_version":"0.13.13"}\n'
         reads.append((operation, json.loads(raw)))
+        if json.loads(raw).get("query") == "read failure":
+            raise mindie_project.ReadFailure(
+                "MindIE rejected the read", exit_code=1, response=b'{"isError":true}\n',
+            )
         return b'{"results":[]}\n'
 
     monkeypatch.setattr(mindie_project, "_worker", worker)
@@ -56,13 +60,27 @@ def test_project_enable_discover_read_and_revoke(tmp_path, monkeypatch, capsys):
     ):
         assert mindie_mcp._reply("tools/call", {"name": name, "arguments": args})["isError"]
 
+    failed = mindie_mcp._reply("tools/call", {
+        "name": "knowledge_query", "arguments": {"query": "read failure"},
+    })
+    assert failed["isError"]
+    failed_path = Path(failed["content"][0]["text"].split("receipt is in ", 1)[1])
+    assert (failed_path / "result.json").read_bytes() == b'{"isError":true}\n'
+    assert json.loads((failed_path / "receipt.json").read_text())["exit_code"] == 1
+
     monkeypatch.chdir(disabled)
     assert mindie_mcp._reply("tools/list", {}) == {"tools": []}
     assert mindie_mcp._reply("tools/call", {
         "name": "knowledge_query", "arguments": {"query": "vector tail"},
     })["isError"]
     monkeypatch.chdir(enabled)
+    (enabled / ".git").rename(enabled / ".original-git")
+    (enabled / ".git").mkdir()
+    assert mindie_mcp._reply("tools/list", {}) == {"tools": []}
+    (enabled / ".git").rmdir()
+    (enabled / ".original-git").rename(enabled / ".git")
+    assert len(mindie_mcp._reply("tools/list", {})["tools"]) == 2
     assert main(["mindie", "disable"]) == 0
     assert mindie_mcp._reply("tools/list", {}) == {"tools": []}
     assert directory.is_dir()
-    assert reads == [("query", {"query": "vector tail"})]
+    assert reads == [("query", {"query": "vector tail"}), ("query", {"query": "read failure"})]

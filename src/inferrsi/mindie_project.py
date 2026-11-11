@@ -20,6 +20,13 @@ _SEARCH_FIELDS = {"query", "conditions", "limit", "token_budget", "include_unkno
 _EXPLAIN_FIELDS = {"refs", "conditions", "known_refs", "token_budget"}
 
 
+class ReadFailure(ValueError):
+    def __init__(self, message, *, exit_code=None, response=None):
+        super().__init__(message)
+        self.exit_code = exit_code
+        self.response = response
+
+
 def project_root() -> Path:
     cwd = Path.cwd().resolve()
     for folder in (cwd, *cwd.parents):
@@ -31,6 +38,23 @@ def project_root() -> Path:
 def _grant_path(root: Path) -> Path:
     project_id = hashlib.sha256(os.fsencode(root)).hexdigest()
     return Path.home() / ".config" / "inferrsi" / "mindie-projects" / (project_id + ".json")
+
+
+def _checkout_identity(root: Path) -> dict:
+    marker = root / ".git"
+    info = marker.stat()
+    identity = {"device": info.st_dev, "inode": info.st_ino}
+    if hasattr(info, "st_birthtime"):
+        identity["created"] = info.st_birthtime
+    if marker.is_file():
+        with marker.open("rb") as pointer:
+            raw = pointer.read(4097)
+        if len(raw) > 4096 or not raw.startswith(b"gitdir: "):
+            raise ValueError("The checkout has an invalid Git worktree pointer")
+        identity["worktree_pointer"] = hashlib.sha256(raw).hexdigest()
+        gitdir = (root / os.fsdecode(raw[8:].rstrip(b"\r\n"))).stat()
+        identity["worktree_gitdir"] = [gitdir.st_dev, gitdir.st_ino]
+    return identity
 
 
 def _json(value) -> bytes:
@@ -53,11 +77,13 @@ def _load_grant(root: Path) -> dict:
                 or os.name == "posix" and (info.st_uid != os.getuid() or info.st_mode & 0o077)):
             raise ValueError("The MindIE project grant must be a private local file")
         grant = _read_object(path)
+        checkout = _checkout_identity(root)
     except FileNotFoundError:
         raise ValueError("MindIE is not enabled for this project") from None
     except OSError:
         raise ValueError("The MindIE project grant could not be read") from None
     if (grant.get("schema") != _SCHEMA or grant.get("project_root") != str(root)
+            or grant.get("checkout") != checkout
             or not isinstance(grant.get("domain"), str) or not _DOMAIN.fullmatch(grant["domain"])
             or any(not isinstance(grant.get(key), str) or not Path(grant[key]).is_absolute()
                    for key in ("python", "engine"))):
@@ -73,12 +99,18 @@ def _worker(grant: dict, action: str, arguments: bytes) -> bytes:
             timeout=20, check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
-        raise ValueError("The approved MindIE reader could not be reached") from None
+        raise ReadFailure("The approved MindIE reader could not be reached") from None
     if len(result.stdout) > MAX_BYTES:
-        raise ValueError("MindIE returned more than 2 MiB")
-    payload = _parse(result.stdout)
+        raise ReadFailure("MindIE returned more than 2 MiB", exit_code=result.returncode)
+    try:
+        payload = _parse(result.stdout)
+    except ValueError:
+        raise ReadFailure(
+            "MindIE did not return a JSON object", exit_code=result.returncode,
+        ) from None
     if result.returncode or payload.get("isError"):
-        raise ValueError(payload.get("error", "The approved MindIE reader failed"))
+        raise ReadFailure(payload.get("error", "The approved MindIE reader failed"),
+                          exit_code=result.returncode, response=result.stdout)
     return result.stdout
 
 
@@ -95,8 +127,10 @@ def enable(adapter: Path, domain: str) -> dict:
     if any(not isinstance(value, str) or not Path(value).is_absolute()
            for value in (python, engine)):
         raise ValueError("The MindIE adapter has no installed runtime or engine for this domain")
-    grant = dict(schema=_SCHEMA, project_root=str(root), python=python,
-                 engine=str(Path(engine).resolve(strict=True)), domain=domain)
+    grant = dict(
+        schema=_SCHEMA, project_root=str(root), checkout=_checkout_identity(root),
+        python=python, engine=str(Path(engine).resolve(strict=True)), domain=domain,
+    )
     info = _parse(_worker(grant, "describe", b"{}"))
     path = _grant_path(root)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -151,30 +185,43 @@ def _check_arguments(action: str, arguments: dict, domain: str) -> None:
             raise ValueError("Explain requires exact revision-bound refs in the approved domain")
 
 
-def call(action: str, arguments: dict, *, session: str | None = None) -> dict:
-    root = project_root()
-    grant = _load_grant(root)
-    _check_arguments(action, arguments, grant["domain"])
-    request = _json(arguments)
-    if len(request) > MAX_BYTES:
-        raise ValueError("MindIE JSON exceeds 2 MiB")
-    response = _worker(grant, action, request)
+def _record_read(root, action, domain, request, response, session, *, exit_code, error=None):
     folder = _grant_path(root)
     reads = folder.parent / "reads" / folder.stem
     reads.mkdir(mode=0o700, parents=True, exist_ok=True)
     receipt = Path(tempfile.mkdtemp(prefix=action + "-", dir=reads))
-    (receipt / "input.json").write_bytes(request)
-    (receipt / "result.json").write_bytes(response)
-    identity = session or os.environ.get("CODEX_THREAD_ID")
-    (receipt / "receipt.json").write_bytes(_json({
-        "authorization": "project", "operation": "knowledge_" + action, "exit_code": 0,
-        "domain": grant["domain"],
-        "session_sha256": hashlib.sha256(identity.encode()).hexdigest() if identity else None,
-        "sha256": {
-            "input.json": hashlib.sha256(request).hexdigest(),
-            "result.json": hashlib.sha256(response).hexdigest(),
-        },
-    }))
+    files = {"input.json": request}
+    if response is not None:
+        files["result.json"] = response
+    for name, content in files.items():
+        (receipt / name).write_bytes(content)
+    record = {
+        "authorization": "project", "operation": "knowledge_" + action, "exit_code": exit_code,
+        "domain": domain,
+        "session_sha256": hashlib.sha256(session.encode()).hexdigest() if session else None,
+        "sha256": {name: hashlib.sha256(content).hexdigest() for name, content in files.items()},
+    }
+    if error is not None:
+        record["error"] = error
+    (receipt / "receipt.json").write_bytes(_json(record))
+    return receipt
+
+
+def call(action: str, arguments: dict, *, session: str | None = None) -> dict:
+    root = project_root()
+    grant = _load_grant(root)
+    domain = grant["domain"]
+    _check_arguments(action, arguments, domain)
+    request = _json(arguments)
+    if len(request) > MAX_BYTES:
+        raise ValueError("MindIE JSON exceeds 2 MiB")
+    try:
+        response = _worker(grant, action, request)
+    except ReadFailure as exc:
+        receipt = _record_read(root, action, domain, request, exc.response, session,
+                               exit_code=exc.exit_code, error=str(exc))
+        raise ValueError(f"{exc}. Local attempt receipt is in {receipt}") from None
+    receipt = _record_read(root, action, domain, request, response, session, exit_code=0)
     return {"receipt_directory": str(receipt), "result": _parse(response)}
 
 
@@ -190,4 +237,5 @@ def dispatch(args) -> dict | None:
 
         serve()
         return None
-    return call(args.mindie_action, _read_object(args.input))
+    return call(args.mindie_action, _read_object(args.input),
+                session=os.environ.get("CODEX_THREAD_ID"))
