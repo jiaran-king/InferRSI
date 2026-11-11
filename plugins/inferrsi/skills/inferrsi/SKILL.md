@@ -145,8 +145,8 @@ separate, and inspect the plan before execution. Preserve failed attempts.
 Retain a separate candidate source snapshot before evaluating it. Commands must
 run that snapshot, even after the generation workspace changes. Inspect actual
 run source hashes and quality/timing evidence; a candidate ID or agent narrative
-does not prove which bytes ran. The guide in `docs/codex-plugin.md` describes
-the RMSNorm workflow, current task availability and evidence lookup.
+does not prove which bytes ran. See `docs/codex-plugin.md` for MindIE setup and
+candidate trace association.
 
 ## Prepare and run a comparison
 

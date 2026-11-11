@@ -81,55 +81,30 @@ Core `knowledge`, packaged `collect/read`, `doctor`, `plan/run` and
 and checkout-skill sources need PyYAML in the selected Python interpreter.
 Image validators and target engines retain their own optional dependencies.
 
-## MindIE knowledge and an RMSNorm candidate
+## MindIE knowledge
 
-Use one Codex agent in one session: InferRSI owns task/round identities, budgets,
-controlled execution and independent evaluation; that agent reads MindIE
-knowledge and edits the candidate. MindIE supplies knowledge in this first phase.
-No MindIE optimization loop, model request or remote execution is added.
+### Supported versions
 
-`campaign import-mindie` is an offline CLI host adapter. It accepts the graded
-query/explain contract documented by
-[MindIE Codex v0.1.21](https://github.com/mindie-agent/mindie-agent-codex/blob/v0.1.21/plugins/mindie-agent/skills/mindie-agent/references/domain-skills.md):
-revision-bound `mindie://<domain>/units/<id>@<integer>` references and full
-`units` / `requires` / `unresolved` delivery. It supports direct JSON, MCP
-`structuredContent`, or one JSON text block. Unsupported or legacy material
-formats are rejected for explicit inspection. Software fixtures exercise this
-mapping; they do not qualify a live MindIE session or NPU.
+The project reader supports Python 3.10+ and a synced local catalog from
+`mindie-knowledge 0.13.13`. The query and explain results follow the graded
+[MindIE Codex v0.1.21 contract](https://github.com/mindie-agent/mindie-agent-codex/blob/v0.1.21/plugins/mindie-agent/skills/mindie-agent/references/domain-skills.md).
 
-Keep the work directory outside the source checkout. Set `WORK`, `CAMPAIGN_DIR`,
-`CAMPAIGN_ID`, `CANDIDATE_ID` and `ROUND` from the actual task, and keep the
-installed InferRSI launcher/interpreter consistent. Commands below use
-`inferrsi`; the installed plugin's launcher accepts the same arguments.
+### Enable and revoke
 
-### Obtain and retain the actual read
-
-First inspect the task and actual environment. Record the InferRSI baseline and
-diff, Codex version, installed MindIE plugin/runtime and knowledge-component
-versions, and corpus Git commit separately. A unit's integer revision is neither
-the corpus commit nor a plugin version. Preserve unknown values as unknown.
-
-From the target Git checkout, authorize the already synced domain once:
+With InferRSI installed, approve a synced domain once from the target checkout.
 
 ```sh
 inferrsi mindie enable --domain operators
 inferrsi mindie describe
 ```
 
-The project reader uses the installed `mindie-knowledge 0.13.13` graded
-retrieval engine with a read-only connection to the synced local catalog.
-`--adapter-config` selects the installed adapter when it lives outside the
-default MindIE config location. The grant and read receipts live in the user's
-local InferRSI configuration directory. New sessions in this checkout discover
-the grant through the InferRSI Skill. Use `inferrsi mindie disable` there to
-revoke it. Opening another checkout or replacing one at the same path requires
-a grant for the new checkout.
+New sessions in that checkout reuse the grant. Use `--adapter-config <path>`
+when the MindIE adapter is installed outside its default location. Run
+`inferrsi mindie disable` from the same checkout to revoke the grant.
 
-To expose the two reads as native MCP tools, add the following entry to the
-trusted project's Codex configuration once. Set the command to the installed
-InferRSI executable and the cwd to the checkout that has the grant. For a built
-plugin, use the compatible Python command and prepend the absolute bundled
-launcher path to `args`.
+### MCP configuration and queries
+
+Add the following entry to the trusted checkout's `.codex/config.toml`.
 
 ```toml
 [mcp_servers.inferrsi_mindie]
@@ -139,184 +114,37 @@ cwd = "<absolute-project-checkout>"
 enabled_tools = ["knowledge_query", "knowledge_explain"]
 ```
 
-The Skill checks whether a specific implementation decision needs research
-before writing a candidate. Use the available MCP tools or the bundled CLI.
-Record the decision and continue with the available evidence when a read is
-unavailable or the search has no applicable hit.
+For the plugin ZIP, set `command` to the Python executable and prepend the
+absolute bundled launcher path to `args`.
 
-Create `query-input.json` using observed facts. For the currently proposed
-RMSNorm task package, the timed inputs are contiguous float32 `[1,4096]` and
-`[64,4096]`, with nonuniform weights. Verify the selected task before using this
-example; add SoC/CANN conditions only after probing them:
-
-```json
-{
-  "query": "Ascend RMSNorm float32 reduction precision and memory access",
-  "conditions": {"dtype": "float32", "input_shape": [[1, 4096], [64, 4096]]},
-  "limit": 5,
-  "token_budget": 8000
-}
-```
+Call `knowledge_query` with a `query` and observed `conditions`. Pass relevant
+versioned `ref` values as `refs` to `knowledge_explain` and read the returned
+`units` and `requires`. The same reads are available through the CLI.
 
 ```sh
-inferrsi mindie query --input "$WORK/query-input.json"
+inferrsi mindie query --input query.json
+inferrsi mindie explain --input explain.json
 ```
 
-Inspect exit status, `isError` and the business payload. Copy exact versioned
-refs from the successful query into `explain-input.json` (`refs`, observed
-`conditions`, `known_refs`, `token_budget`). `known_refs` may list only full
-exact-version bodies still visible in this agent's context; after compaction,
-read them again. Then:
+### Associate reads with a candidate
+
+Use the `receipt_directory` from each call. Import the `input.json` and
+`result.json` files with the exit codes in `receipt.json` into an existing
+campaign or one created with `campaign init`.
 
 ```sh
-inferrsi mindie explain --input "$WORK/explain-input.json"
-```
-
-Inspect this response too, and actually read the delivered bodies. Search cards
-and excerpts are navigation; errors and `unresolved` are not delivered knowledge.
-For example, five search hits and one expanded unit remain five hits and one
-expanded unit, plus any prerequisites actually returned in `requires`.
-
-Set `QUERY_READ` and `EXPLAIN_READ` to the respective returned
-`receipt_directory` values. Confirm both exits in their `receipt.json` files.
-Use an existing matching campaign or initialize a new one, then import the
-retained bytes:
-
-```sh
-inferrsi campaign init --directory "$CAMPAIGN_DIR" --id "$CAMPAIGN_ID"
-inferrsi campaign import-mindie --directory "$CAMPAIGN_DIR" --id read-r1 \
+inferrsi campaign import-mindie --directory "$CAMPAIGN_DIR" --id "$READ_ID" \
   --query-input "$QUERY_READ/input.json" --query-result "$QUERY_READ/result.json" \
   --explain-input "$EXPLAIN_READ/input.json" --explain-result "$EXPLAIN_READ/result.json" \
-  --query-exit-code 0 --explain-exit-code 0
+  --query-exit-code "$QUERY_EXIT" --explain-exit-code "$EXPLAIN_EXIT"
 ```
 
-The new `mindie/read-r1/` directory contains exact original files, a hash receipt,
-`reviewed-context.txt` and `context.json`. The latter is a fragment for the
-existing trace template, with `text` deliberately empty. Its sources include
-only delivered bodies and prerequisites. Each locator names the retained
-response, its SHA-256 and the position of the exact content. Unit refs are
-qualified from the request domain and the delivered id/integer revision when
-the response omits a redundant `ref` field. Excluded or undelivered requested
-material marks the context partial, with its original `unresolved` list retained.
-
-The importer does not mark caller review or read a transcript. A response file
-and supplied exit code are caller-provided evidence, not authenticated tool
-receipts or proof of model consumption. Failed reads, missing files and empty
-deliveries are rejected. Existing read IDs are never overwritten. On an I/O
-failure preserve any partial export for inspection and use a fresh ID after
-resolving the cause. Ordinary InferRSI operations require no MindIE installation.
-
-### Deliver and independently evaluate one fixed candidate
-
-Freeze the selected task, baseline, scalar oracle, shapes/dtype, tolerances,
-measurement boundary and this round's budget **before** modifying a candidate.
-Use the task's existing gates; do not substitute default CLI values for accepted
-criteria. The RMSNorm package uses scalar double/`math.fsum` correctness,
-also checks zero/large/tiny inputs and input/weight preservation, and measures
-synchronized eager-call latency with generation, transfers and validation
-outside the timer. It does not measure pure kernel time or service throughput.
-
-**Task availability:** the shared `benchmarks` RMSNorm path is proposed in
-[Draft #338](https://github.com/InferMatrixLab/InferRSI/pull/338), tracked by
-[#337](https://github.com/InferMatrixLab/InferRSI/issues/337). It is not supplied
-by this integration. Use only an explicitly selected, reviewed evaluation
-revision/environment; retain its revision separately from this host adapter.
-Check `"$EVAL_PYTHON" -m inferrsi benchmarks show rmsnorm-npu` before preparing
-the commands below. If absent, retain that gap; do not invent a mainline command
-or silently merge the Draft. The existing `run` entry can instead consume
-explicitly reviewed independent benchmark/validation commands.
-
-The agent edits `"$WORK/generation/implementation.py"` after reading the actual
-knowledge. Deliver a separate v1 source snapshot, including all local imports:
-
-```sh
-mkdir "$WORK/candidate-v1"
-cp "$WORK/generation/implementation.py" "$WORK/candidate-v1/implementation.py"
-git -C "$WORK/candidate-v1" init -b codex/rmsnorm-v1
-git -C "$WORK/candidate-v1" add -- implementation.py
-git -C "$WORK/candidate-v1" commit -s -m "Freeze reviewed RMSNorm candidate v1"
-CANDIDATE_REPO="$WORK/candidate-v1"
-```
-
-Use the project's Author, Committer and sign-off policy for that local snapshot.
-Retain its commit separately from the evaluator revision. `--repo` sets the
-trial working directory: for the selected RMSNorm worker, it must contain the
-exact frozen `implementation.py`, because Triton JIT source inspection resolves
-that filename there. The standalone `check` already uses the candidate's parent;
-`compare` uses `--repo`. When using the pinned evaluator source checkout, set
-`PYTHONPATH="$EVAL_REPO/src"` for these commands so evaluator imports remain
-separate from the candidate execution checkout. Inspect `benchmarks plan` before
-execution to confirm those paths and the frozen task/candidate identities.
-
-Retain a manifest of its SHA-256, originating baseline/diff, generation round,
-reviewed knowledge receipt and applicable source-review outcome. Review before
-using the trusted NPU worker: the formal CPU sandbox does not qualify generated
-NPU code. Use the authorized task/allocation and exclusive physical device
-reservation, respecting A3 dual-Die ownership. Verify the selected single
-`ASCEND_RT_VISIBLE_DEVICES` mapping; this document grants no resources.
-
-Inside that authorized allocation, using the frozen budget and gates:
-
-```sh
-"$EVAL_PYTHON" -m inferrsi benchmarks check rmsnorm-npu \
-  --candidate "$WORK/candidate-v1/implementation.py" \
-  --output-dir "$WORK/check-v1" --timeout-seconds "$ACTION_TIMEOUT"
-"$EVAL_PYTHON" -m inferrsi benchmarks compare rmsnorm-npu \
-  --candidate "$WORK/candidate-v1/implementation.py" --repo "$CANDIDATE_REPO" \
-  --output-dir "$CAMPAIGN_DIR/runs" --repetitions "$PAIRS" \
-  --max-minutes "$COMPARISON_MINUTES" --min-improvement-pct "$GAIN_GATE" \
-  > "$WORK/compare-v1.json"
-COMPARE_EXIT=$?
-```
-
-Record check and comparison exit statuses and outputs, including negative
-results. Establish allocation/process deadlines and verify cleanup: the #338
-whole-utility/action-timeout finding is not resolved by this adapter. Do not run
-the full qualification utility to obtain ordinary candidate measurements.
-Profiling is optional. Inspect the actual returned `run_dir` to obtain `RUN_ID`;
-if no run was created, do not fabricate an association.
-
-### Bind the read, round, delivered source and run
-
-Copy the complete
-[per-candidate trace template](https://github.com/InferMatrixLab/InferRSI/blob/main/docs/dashboard.md#per-candidate-narrative-schema-version-1)
-and replace its `context` with the exported `context.json`. Fill the actual
-`CAMPAIGN_ID`, `CANDIDATE_ID`, `ROUND`, `RUN_ID`, search/attempt narrative and
-limitations. Review the full delivered text and original responses before
-setting `reviewed_by_caller: true`. If a copy is shortened or sanitized, retain
-the authorized original separately and use `partial`/`redacted` with the reason;
-do not describe it as the complete original.
-
-```sh
-inferrsi campaign assemble-trace --directory "$CAMPAIGN_DIR" \
-  --template "$WORK/trace-template.json" \
-  --context-file "$CAMPAIGN_DIR/mindie/read-r1/reviewed-context.txt" \
-  --output optimization-v1.json
-inferrsi campaign record --directory "$CAMPAIGN_DIR" \
-  --candidate "$CANDIDATE_ID" --run-id "$RUN_ID" --round "$ROUND" \
-  --title "RMSNorm candidate v1" --optimization-trace optimization-v1.json
-inferrsi status --output-dir "$CAMPAIGN_DIR/runs" --run-id "$RUN_ID"
-inferrsi report --output-dir "$CAMPAIGN_DIR/runs" --run-id "$RUN_ID"
-inferrsi dashboard --input "$CAMPAIGN_DIR" --output "$WORK/dashboard.html"
-```
-
-Follow `candidates/<candidate_id>/candidate.json` to its hashed optimization
-trace, the retained explain response and its source positions. Follow `run_id`
-to `runs/<run_id>/run.lock.json`, `repositories.lock.json`, per-command source
-checks, validation, results and `evaluation.json`. For the shared task, compare
-the worker's `candidate_sha256` and frozen command identity with the retained
-source snapshot. The generic runner fingerprints checkouts; it does not copy
-source files or authenticate external candidate paths. A candidate ID alone
-cannot establish tested bytes. Generate v2 under a new candidate/snapshot and
-trace; changing the generation workspace must not change what the v1 commands
-load. Preserve v1 and all failed attempts.
-
-Report correctness, measured performance, process state, wall time and available
-usage separately. Missing token/call/device accounting stays unknown. A failed
-quality gate or absent speedup is retained; incomplete source/device/measurement
-evidence is `INCONCLUSIVE`. CPU fixtures, NPU operator verification and service
-claims remain distinct. This workflow neither publishes artifacts nor grants
-Issue/PR/comment/knowledge-contribution or merge permission.
+Use the exported `context.json` and `reviewed-context.txt` with the
+[candidate trace template](https://github.com/InferMatrixLab/InferRSI/blob/main/docs/dashboard.md#per-candidate-narrative-schema-version-1).
+Record which versioned source informed the code change. Set
+`reviewed_by_caller: true` after reviewing the trace and the retained reads.
+Use `campaign assemble-trace` and `campaign record` to bind it to the frozen
+candidate, round, and independent evaluation `run_id`.
 
 ## Build from the InferRSI source checkout
 
