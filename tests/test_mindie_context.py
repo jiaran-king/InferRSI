@@ -22,8 +22,8 @@ def evidence(tmp_path):
     campaign = tmp_path / "campaign"
     create_campaign(campaign, "example")
     documents = {
-        "query_input": {"query": "RMSNorm reduction and memory access", "conditions": {
-            "dtype": "float32", "input_shape": [[1, 4096], [64, 4096]]}},
+        "query_input": {"query": "Precision guidance for a vector reduction", "conditions": {
+            "dtype": "float32", "input_shape": [[2, 17], [3, 9]]}},
         "query_result": {"isError": False, "structuredContent": {"results": [
             {"ref": REF}, *({"ref": f"mindie://vllm-ascend/units/unit-other-{i}@1"}
                            for i in range(4))]}},
