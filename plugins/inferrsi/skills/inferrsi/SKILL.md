@@ -137,11 +137,6 @@ bodies and the per-candidate trace, then use `campaign assemble-trace` and
 independent run. InferRSI owns execution and evaluation. A knowledge read
 authorizes only the approved local knowledge operation.
 
-For the selected shared RMSNorm worker, keep the frozen `implementation.py` in
-the Git checkout passed as comparison `--repo`: that is the trial cwd used by
-Triton source inspection. Keep the pinned evaluator import path and revision
-separate, and inspect the plan before execution. Preserve failed attempts.
-
 Retain a separate candidate source snapshot before evaluating it. Commands must
 run that snapshot, even after the generation workspace changes. Inspect actual
 run source hashes and quality/timing evidence; a candidate ID or agent narrative
