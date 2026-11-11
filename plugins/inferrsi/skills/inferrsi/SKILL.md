@@ -103,6 +103,53 @@ documented in `docs/dashboard.md`. Keep the recorded context, commands and
 identifiers intact; a translation is not the original evidence. Explicitly leave
 unsupported or unavailable translations in their original language.
 
+### Optional MindIE knowledge in this session
+
+Use this path only when the user explicitly enables MindIE knowledge in the
+current Codex session. Follow the installed MindIE skill to resolve its runtime,
+activate in the native shell and inspect `knowledge_cli.py describe`. Do not
+invent a session identity, bypass Admission or enable contribution/capture.
+If activation needs the user's manual entry, explain the exact requirement and
+continue independent code work. Confirm actual hook loading and native trust
+before requesting repeated entry: plugin installed/enabled does not mean its
+`UserPromptSubmit` hook is trusted. The user reviews the necessary definition in
+the native Hooks UI; keep that review within their authorized capabilities.
+MindIE v0.1.21 needs a message beginning directly with its command, without
+surrounding Markdown backticks. InferRSI does not install or activate MindIE.
+
+InferRSI owns task/round identity, budgets, controlled execution and independent
+assessment; this same host agent reads knowledge and edits code. MindIE supplies
+knowledge only. Do not start a second optimization loop or let knowledge access
+authorize device execution. Keep sharing, distillation, feedback, transcript
+capture and publication outside a query/read-only authorization.
+
+Inspect the actual task's shapes, dtype and environment, then call
+`knowledge_query` and `knowledge_explain` with observed conditions. Preserve each
+input, exact response and exit status outside the source checkout. Copy full
+revision-bound refs from this query; `known_refs` includes only exact bodies
+still fully visible. Actually read the successful `units` and `requires` bodies;
+search hits, excerpts, errors and `unresolved` are not delivered bodies.
+
+Use `campaign import-mindie --help` to retain these explicitly supplied files
+and create a context fragment. It performs offline conversion, never calls
+MindIE or marks caller review. Review the raw responses, generated text and the
+complete per-candidate trace template before setting `reviewed_by_caller`.
+Use `campaign assemble-trace` and `campaign record` with the actual candidate,
+generation round and independent run. Keep unit revision, corpus Git commit,
+knowledge component and plugin versions distinct. Unsupported formats or
+unsuccessful reads remain explicit gaps; ordinary InferRSI operations continue.
+
+For the selected shared RMSNorm worker, keep the frozen `implementation.py` in
+the Git checkout passed as comparison `--repo`: that is the trial cwd used by
+Triton source inspection. Keep the pinned evaluator import path and revision
+separate, and inspect the plan before execution. Preserve failed attempts.
+
+Retain a separate candidate source snapshot before evaluating it. Commands must
+run that snapshot, even after the generation workspace changes. Inspect actual
+run source hashes and quality/timing evidence; a candidate ID or agent narrative
+does not prove which bytes ran. The guide in `docs/codex-plugin.md` describes
+the RMSNorm workflow, current task availability and evidence lookup.
+
 ## Prepare and run a comparison
 
 Consult `plan --help` and `run --help` to build the current runtime's invocation.
